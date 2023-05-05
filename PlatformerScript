@@ -1,0 +1,337 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+public class PlatformerScript : MonoBehaviour
+{
+    #region Assignable
+
+    [Header("Attributes")]
+    [SerializeField] private Rigidbody2D rb;
+    [SerializeField] private Transform groundCheck;
+    [SerializeField] private LayerMask groundLayer;
+    [SerializeField] private Transform wallCheck;
+    [SerializeField] private LayerMask wallLayer;
+
+    [Space(10)]
+
+    #endregion
+
+    #region Configurable
+
+    [Header("Modifiers")]
+
+    [Header("Movement Config.")]
+    //Moving
+    [SerializeField, Range(0f, 20f)] private float moveSpeed = 8f;
+    [SerializeField, Range(0f, 20f)] private float acceleration = 6f;
+    [SerializeField, Range(0f, 20f)] private float deceleration = 6f;
+    [SerializeField, Range(0f, 20f)] private float aerialSpeed = 5f;
+    [SerializeField, Range(0f, 20f)] private float aerialAcceleration = 6f;
+    [SerializeField, Range(0f, 20f)] private float aerialDeceleration = 6f;
+    
+    [Space(5)]
+    
+    [Header("Jump Config.")]
+    //Jumping
+    [SerializeField, Range(0f, 30f)] private float jumpingPower = 16f;
+    [SerializeField, Range(0f, 30f)] private float airJumpingPower = 8f;
+    [SerializeField, Range(0f, 50f)] private float jumpingAcceleration = 25f;
+    [SerializeField, Range(0f, 10f)] private float floatingSpeed = 0.5f;
+    [SerializeField, Range(0f, 10f)] private float downwardMovementMultiplier = 3f;
+    [SerializeField, Range(0f, 10f)] private float upwardMovementMultiplier = 1.7f;
+    [SerializeField, Range(0f, 1f)] private float coyoteTime = 0.2f;
+    [SerializeField, Range(0f, 1f)] private float jumpBufferTime = 0.2f;
+    [SerializeField, Range(0, 5)] private int maxAirJumps;
+
+    [Space(5)]
+
+    [Header("Wall Movement Config.")]
+    //Wall Movement
+    [SerializeField, Range(0f, 10f)] private float wallSlidingSpeed = 2f;
+    [SerializeField, Range(0f, 1f)] private float wallJumpingTime = 0.2f;
+    [SerializeField, Range(0f, 1f)] private float wallJumpingDuration = 0.4f;
+    [SerializeField] private Vector2 wallJumpingPower = new Vector2(8f, 16f);
+
+    [Header("Dash Config.")]
+    //Dashing
+    [SerializeField, Range(0f, 50f)]private float dashingPower = 24f;
+    [SerializeField, Range(0f, 1f)] private float dashingTime = 0.2f;
+    [SerializeField, Range(0f, 5f)]private float dashingCooldown = 1f;
+
+    #endregion
+
+    #region Local Variables
+    //Moving
+    private bool isFacingRight = true;
+    private float horizontal;
+    private float targetSpeed;
+
+    
+    //Jumping
+    private bool isJumping;
+    private float coyoteTimeCounter;
+    private float jumpBufferCounter;
+    private float defaultGravityScale = 1;
+    private int jumpPhase = 0;
+    private bool isFloating = false;
+
+    //Wall Movement
+    private bool isWallSliding;
+    private bool isWallJumping;
+    private float wallJumpingDirection;
+    private float wallJumpingCounter;
+
+    //Dashing
+    private bool canDash = true;
+    private bool isDashing;
+
+    #endregion
+
+    private void Update()
+    {
+        if (isDashing)
+        {
+            return;
+        }
+
+        horizontal = Input.GetAxisRaw("Horizontal");
+
+        if (IsGrounded())
+        {
+            coyoteTimeCounter = coyoteTime;
+        }
+        else
+        {
+            coyoteTimeCounter -= Time.deltaTime;
+        }
+
+
+        if (Input.GetButtonDown("Jump"))
+        {
+            jumpBufferCounter = jumpBufferTime;
+            
+            if(jumpPhase < maxAirJumps && !IsWalled() && !IsGrounded())
+            {
+                Debug.Log("Air Jumped");
+
+                jumpPhase += 1;
+                //rb.velocity = new Vector2(rb.velocity.x, airJumpingPower);
+                rb.velocity = new Vector2(rb.velocity.x, Mathf.Lerp(rb.velocity.y, airJumpingPower, jumpingAcceleration * Time.deltaTime));
+
+                jumpBufferCounter = 0f;
+
+                StartCoroutine(JumpCooldown());
+            }
+        }
+        else
+        {
+            jumpBufferCounter -= Time.deltaTime;
+        }
+
+        if (coyoteTimeCounter > 0f && jumpBufferCounter > 0f && !isJumping)   
+        {
+            Debug.Log("Normal Jumped");
+
+            jumpPhase += 1;
+            
+            rb.velocity = new Vector2(rb.velocity.x, jumpingPower);
+            rb.velocity = new Vector2(rb.velocity.x, Mathf.Lerp(rb.velocity.y, jumpingPower, jumpingAcceleration * Time.deltaTime));
+
+
+            jumpBufferCounter = 0f;
+
+            StartCoroutine(JumpCooldown());
+        }
+
+        if (Input.GetButtonUp("Jump") && rb.velocity.y > 0f)
+        {
+            rb.velocity = new Vector2(rb.velocity.x, rb.velocity.y * 0.5f);
+
+            coyoteTimeCounter = 0f;
+        }
+
+        if (Input.GetKeyDown(KeyCode.LeftShift) && canDash)
+        {
+            StartCoroutine(Dash());
+        }
+
+        if(Input.GetKey(KeyCode.Space) && !IsWalled() && !IsGrounded())
+        {
+            isFloating = true;
+            rb.velocity = new Vector2(rb.velocity.x, Mathf.Clamp(rb.velocity.y, -floatingSpeed, float.MaxValue));
+        }
+        else 
+        {
+            isFloating = false;
+        }
+
+        WallSlide();
+        WallJump();
+
+        if (!isWallJumping)
+        {
+            Flip();
+        }
+
+        Flip();
+    }
+
+    private void FixedUpdate()
+    {
+        if (isDashing)
+        {
+            return;
+        }
+
+        if(IsGrounded())
+        {            
+            targetSpeed = horizontal * moveSpeed;
+
+            if (horizontal == 0)
+            {
+                rb.velocity = new Vector2(Mathf.Lerp(rb.velocity.x, 0f, deceleration * Time.deltaTime), rb.velocity.y);
+            }
+            else
+            {
+                rb.velocity = new Vector2(Mathf.Lerp(rb.velocity.x, targetSpeed, acceleration * Time.deltaTime), rb.velocity.y);
+            }
+        
+            jumpPhase = 0;
+        } 
+        
+        if(!IsGrounded() && !IsWalled() && !isWallJumping) 
+        {
+            //rb.velocity = new Vector2(horizontal * aerialSpeed, rb.velocity.y);
+
+            targetSpeed = horizontal * aerialSpeed;
+
+            if (horizontal == 0)
+            {
+                rb.velocity = new Vector2(Mathf.Lerp(rb.velocity.x, 0f, aerialDeceleration * Time.deltaTime), rb.velocity.y);
+            }
+            else
+            {
+                rb.velocity = new Vector2(Mathf.Lerp(rb.velocity.x, targetSpeed, aerialAcceleration * Time.deltaTime), rb.velocity.y);
+            }
+        }
+
+        if(IsWalled())
+        {
+            jumpPhase = 0;
+        }
+
+        if (rb.velocity.y > 0)
+        {
+            rb.gravityScale = upwardMovementMultiplier;
+        }
+        else if ((rb.velocity.y < 0) && (!isFloating))
+        {
+            rb.gravityScale = downwardMovementMultiplier;
+        }
+        else if(rb.velocity.y == 0)
+        {
+            rb.gravityScale = defaultGravityScale;
+        }
+
+        
+    }
+
+    private bool IsGrounded()
+    {
+        return Physics2D.OverlapCircle(groundCheck.position, 0.2f, groundLayer);
+    }
+
+    private void Flip()
+    {
+        if (isFacingRight && horizontal < 0f || !isFacingRight && horizontal > 0f)
+        {
+            isFacingRight = !isFacingRight;
+            Vector3 localScale = transform.localScale;
+            localScale.x *= -1f;
+            transform.localScale = localScale;
+        }
+    }
+    private IEnumerator JumpCooldown()
+    {
+        isJumping = true;
+        yield return new WaitForSeconds(0.4f);
+        isJumping = false;
+    }
+
+    private bool IsWalled()
+    {
+        return Physics2D.OverlapCircle(wallCheck.position, 0.2f, wallLayer);
+    }
+
+    private void WallSlide()
+    {
+        if (IsWalled() && !IsGrounded() && horizontal != 0f)
+        {
+            isWallSliding = true;
+            rb.velocity = new Vector2(rb.velocity.x, Mathf.Clamp(rb.velocity.y, -wallSlidingSpeed, float.MaxValue));
+        }
+        else
+        {
+            isWallSliding = false;
+        }
+    }
+
+    private void WallJump()
+    {
+        if (isWallSliding)
+        {
+            isWallJumping = false;
+            wallJumpingDirection = -transform.localScale.x;
+            wallJumpingCounter = wallJumpingTime;
+
+
+            CancelInvoke(nameof(StopWallJumping));
+        }
+        else
+        {
+            wallJumpingCounter -= Time.deltaTime;
+        }
+
+        if (Input.GetButtonDown("Jump") && wallJumpingCounter > 0f)
+        {
+            Debug.Log("Wall Jumped");
+            isWallJumping = true;
+            rb.velocity = new Vector2(wallJumpingDirection * wallJumpingPower.x, wallJumpingPower.y);
+            
+
+            wallJumpingCounter = 0f;
+
+            Debug.Log(wallJumpingDirection * wallJumpingPower);
+
+            if (transform.localScale.x != wallJumpingDirection)
+            {
+                isFacingRight = !isFacingRight;
+                Vector3 localScale = transform.localScale;
+                localScale.x *= -1f;
+                transform.localScale = localScale;
+            }
+
+            Invoke(nameof(StopWallJumping), wallJumpingDuration);
+        }
+    }
+    private void StopWallJumping()
+    {
+        isWallJumping = false;
+    }
+
+    private IEnumerator Dash()
+    {
+        canDash = false;
+        isDashing = true;
+        float originalGravity = rb.gravityScale;
+        rb.gravityScale = 0f;
+        rb.velocity = new Vector2(transform.localScale.x * dashingPower, 0f);
+        yield return new WaitForSeconds(dashingTime);
+        rb.gravityScale = originalGravity;
+        isDashing = false;
+        yield return new WaitForSeconds(dashingCooldown);
+        canDash = true;
+    }
+}
