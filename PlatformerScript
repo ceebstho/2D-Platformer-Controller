@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 
-public class PlatformerScript : MonoBehaviour
+public class PlayerController : MonoBehaviour
 {
     #region Assignable
 
@@ -37,7 +37,6 @@ public class PlatformerScript : MonoBehaviour
     //Jumping
     [SerializeField, Range(0f, 30f)] private float jumpingPower = 16f;
     [SerializeField, Range(0f, 30f)] private float airJumpingPower = 8f;
-    [SerializeField, Range(0f, 50f)] private float jumpingAcceleration = 25f;
     [SerializeField, Range(0f, 10f)] private float floatingSpeed = 0.5f;
     [SerializeField, Range(0f, 10f)] private float downwardMovementMultiplier = 3f;
     [SerializeField, Range(0f, 10f)] private float upwardMovementMultiplier = 1.7f;
@@ -117,8 +116,7 @@ public class PlatformerScript : MonoBehaviour
                 Debug.Log("Air Jumped");
 
                 jumpPhase += 1;
-                //rb.velocity = new Vector2(rb.velocity.x, airJumpingPower);
-                rb.velocity = new Vector2(rb.velocity.x, Mathf.Lerp(rb.velocity.y, airJumpingPower, jumpingAcceleration * Time.deltaTime));
+                rb.velocity = new Vector2(rb.velocity.x, airJumpingPower);
 
                 jumpBufferCounter = 0f;
 
@@ -137,7 +135,6 @@ public class PlatformerScript : MonoBehaviour
             jumpPhase += 1;
             
             rb.velocity = new Vector2(rb.velocity.x, jumpingPower);
-            rb.velocity = new Vector2(rb.velocity.x, Mathf.Lerp(rb.velocity.y, jumpingPower, jumpingAcceleration * Time.deltaTime));
 
 
             jumpBufferCounter = 0f;
