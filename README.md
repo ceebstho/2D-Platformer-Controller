@@ -5,10 +5,14 @@ The script itself has many modifiers which can be adjusted to suit different nee
 
 Includes the following functions:
 - Smooth movement (ground + aerial)
-- Double jumping
+- Jump buffer
+- Coyote time
+- Multi-jumping (can be modified to have any amount of extra mid-air jumps)
 - Dashing
 - Wall sliding
 - Wall jumping
 - Gliding
 
-A great starting point for 2d platformer games. 
+A great starting point for 2d platformer games.
+
+Made in mind with Unity 2D Games. 
